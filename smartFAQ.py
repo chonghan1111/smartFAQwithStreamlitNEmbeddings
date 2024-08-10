@@ -1,58 +1,64 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-# Import your embedding model and cosine similarity function here
+import openai
+from sklearn.metrics.pairwise import cosine_similarity
 
-openai.api_key =  st.secrets["mykey"]
+# Set your OpenAI API key
+openai.api_key = st.secrets["mykey"]
 
-def load_data_and_embeddings():
-    # Replace 'your_data.csv' with your actual file path
-    data = pd.read_csv('qa_dataset_with_embeddings.csv')
-    # Load pre-calculated embeddings (replace with your loading logic)
-    embeddings = np.load('embeddings.npy')
-    return data, embeddings
+# Load the CSV file into a Pandas DataFrame
+df = pd.read_csv('qa_dataset_with_embeddings.csv')
 
-def generate_embedding(question, model):
-    # Replace with your embedding generation logic using the selected model
-    embedding = model.encode(question)
-    return embedding
+# Convert the Question_Embedding from string to numpy array
+df['Question_Embedding'] = df['Question_Embedding'].apply(lambda x: np.array(eval(x)))
 
-def find_answer(user_question, embeddings, data, threshold=0.8):
-    # Generate embedding for user question
-    user_embedding = generate_embedding(user_question, model)
+# Function to generate embeddings using OpenAI
+def generate_embedding_openai(text):
+    response = openai.Embedding.create(
+        input=[text],
+        model="text-embedding-ada-002"
+    )
+    embedding = response['data'][0]['embedding']
+    return np.array(embedding)
 
-    # Calculate cosine similarities
-    similarities = np.dot(embeddings, user_embedding) / (np.linalg.norm(embeddings, axis=1) * np.linalg.norm(user_embedding))
+# Function to find the most similar question and return the corresponding answer
+def find_most_similar_answer(user_question, df):
+    # Generate embedding for the user's question using OpenAI
+    user_embedding = generate_embedding_openai(user_question)
 
-    # Find the most similar question
-    most_similar_index = np.argmax(similarities)
-    similarity_score = similarities[most_similar_index]
+    # Calculate cosine similarities between user question and stored questions
+    stored_embeddings = np.stack(df['Question_Embedding'].values)
+    similarities = cosine_similarity([user_embedding], stored_embeddings)
 
-    if similarity_score >= threshold:
-        answer = data['answer'][most_similar_index]
-        return answer, similarity_score
+    # Find the index of the most similar question
+    most_similar_idx = np.argmax(similarities)
+    similarity_score = similarities[0][most_similar_idx]
+
+    # Define a threshold for relevance
+    threshold = 0.7
+
+    # Return the corresponding answer if similarity is above the threshold
+    if similarity_score > threshold:
+        return df['Answer'].iloc[most_similar_idx], similarity_score
     else:
-        return None, None
+        return "I apologize, but I don't have information on that topic yet. Could you please ask other questions?", similarity_score
 
-def main():
-    st.title("Question Answering App")
+# Streamlit Interface
+st.title("Health Q&A System")
 
-    data, embeddings = load_data_and_embeddings()
+# User input
+user_question = st.text_input("Ask a question about heart, lung, or blood-related health topics:")
 
-    user_question = st.text_input("Ask your question:")
-    if st.button("Search"):
-        if user_question:
-            answer, similarity_score = find_answer(user_question, embeddings, data)
-            if answer:
-                st.write(f"Answer: {answer}")
-                st.write(f"Similarity Score: {similarity_score:.2f}")
-            else:
-                st.write("I apologize, but I don't have information on that topic yet. Could you please ask other questions?")
+# Button to trigger search
+if st.button("Get Answer"):
+    if user_question.strip() != "":
+        answer, similarity = find_most_similar_answer(user_question, df)
+        st.write(f"**Answer:** {answer}")
+        st.write(f"**Similarity Score:** {similarity:.2f}")
+    else:
+        st.write("Please enter a question.")
 
-    # Optional features:
-    # st.button("Clear")  # Clear the input field
-    # st.slider("Similarity Threshold", min_value=0.0, max_value=1.0, value=0.8)  # Adjust threshold
-    # st.radio("Rate the answer", options=["Helpful", "Not Helpful"])  # User feedback
-
-if __name__ == "__main__":
-    main()
+# Clear button (resets the text input)
+if st.button("Clear"):
+    st.text_input("Ask a question about heart, lung, or blood-related health topics:", value="", key="new")
