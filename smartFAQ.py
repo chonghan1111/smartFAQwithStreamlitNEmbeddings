@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 # Import your embedding model and cosine similarity function here
 
-
+openai.api_key =  st.secrets["mykey"]
 
 def load_data_and_embeddings():
     # Replace 'your_data.csv' with your actual file path
-    data = pd.read_csv('your_data.csv')
+    data = pd.read_csv('qa_dataset_with_embeddings.csv')
     # Load pre-calculated embeddings (replace with your loading logic)
     embeddings = np.load('embeddings.npy')
     return data, embeddings
